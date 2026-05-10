@@ -50,6 +50,9 @@ int main(int argc, char *argv[]) {
             if (i + 1 < argc && argv[i + 1][0] != '-') {
                 arg1 = argv[++i];
             }
+        } else if (strcmp(argv[i], "--remove_district") == 0 && i + 1 < argc) {
+            command = "remove_district";
+            district_id = argv[++i];
         }
     }
 
@@ -69,8 +72,10 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    // Ensure district exists before executing command
-    ensure_district_exists(district_id);
+    // Ensure district exists before executing command (except for remove_district)
+    if (strcmp(command, "remove_district") != 0) {
+        ensure_district_exists(district_id);
+    }
 
     // Dispatch command
     if (strcmp(command, "add") == 0) {
@@ -83,6 +88,8 @@ int main(int argc, char *argv[]) {
     } else if (strcmp(command, "remove_report") == 0) {
         cmd_remove_report(district_id, arg1, role, user);
         create_symlink(district_id);
+    } else if (strcmp(command, "remove_district") == 0) {
+        cmd_remove_district(district_id, role, user);
     } else if (strcmp(command, "update_threshold") == 0) {
         cmd_update_threshold(district_id, arg1, role, user);
     } else if (strcmp(command, "filter") == 0) {

@@ -7,6 +7,7 @@
 #include <sys/stat.h>
 #include <errno.h>
 #include <time.h>
+#include <signal.h>
 #include "utils.h"
 #include "report.h"
 
@@ -327,5 +328,88 @@ void create_symlink(const char *district_id) {
     if (symlink(target_path, symlink_name) == -1) {
         perror("symlink");
     }
+}
+
+// Log an operation with a custom message
+void log_operation_with_message(const char *district_id, const char *operation, const char *role, const char *user, const char *message) {
+    char log_path[MAX_PATH_LEN];
+    snprintf(log_path, sizeof(log_path), "%s/logged_district", district_id);
+
+    if (strcmp(role, "inspector") == 0) {
+        struct stat st;
+        if (stat(log_path, &st) != -1) {
+            if (!(st.st_mode & S_IWOTH)) {
+                fprintf(stderr, "Error: Inspector role cannot write to logged_district.\n");
+                return;
+            }
+        }
+    }
+
+    int fd = open(log_path, O_WRONLY | O_CREAT | O_APPEND, LOGGED_DISTRICT_PERM);
+    if (fd == -1) {
+        perror("open logged_district");
+        return;
+    }
+
+    chmod(log_path, LOGGED_DISTRICT_PERM);
+
+    time_t now = time(NULL);
+    char log_entry[MAX_LOG_LEN];
+    snprintf(log_entry, sizeof(log_entry), "%ld | %s | %s | %s | %s\n", now, role, user, operation, message);
+
+    write(fd, log_entry, strlen(log_entry));
+    close(fd);
+}
+
+// Notify monitor_reports of a new event by reading .monitor_pid and sending SIGUSR1
+int notify_monitor(const char *message) {
+    char pid_file[MAX_PATH_LEN];
+    char pid_buffer[32];
+    int fd;
+    ssize_t bytes_read;
+    pid_t monitor_pid;
+    char *endptr;
+    long pid_value;
+
+    snprintf(pid_file, sizeof(pid_file), ".monitor_pid");
+
+    fd = open(pid_file, O_RDONLY);
+    if (fd == -1) {
+        if (errno == ENOENT) {
+            return -1;
+        }
+        perror("open .monitor_pid");
+        return -1;
+    }
+
+    bytes_read = read(fd, pid_buffer, sizeof(pid_buffer) - 1);
+    close(fd);
+
+    if (bytes_read <= 0) {
+        fprintf(stderr, "Error: Failed to read monitor PID from .monitor_pid\n");
+        return -1;
+    }
+
+    pid_buffer[bytes_read] = '\0';
+
+    if (bytes_read > 0 && pid_buffer[bytes_read - 1] == '\n') {
+        pid_buffer[bytes_read - 1] = '\0';
+    }
+
+    errno = 0;
+    pid_value = strtol(pid_buffer, &endptr, 10);
+    if (errno != 0 || *endptr != '\0') {
+        fprintf(stderr, "Error: Invalid PID in .monitor_pid\n");
+        return -1;
+    }
+
+    monitor_pid = (pid_t) pid_value;
+
+    if (kill(monitor_pid, SIGUSR1) == -1) {
+        perror("kill");
+        return -1;
+    }
+
+    return 0;
 }
 

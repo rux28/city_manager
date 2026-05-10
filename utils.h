@@ -17,6 +17,10 @@ void create_symlink(const char *district_id);
 
 // Logging
 void log_operation(const char *district_id, const char *operation, const char *role, const char *user);
+void log_operation_with_message(const char *district_id, const char *operation, const char *role, const char *user, const char *message);
+
+// Monitor notification
+int notify_monitor(const char *message);
 
 #endif // UTILS_H
 

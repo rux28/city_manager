@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <time.h>
 #include "commands.h"
 #include "report.h"
@@ -94,8 +95,13 @@ void cmd_add(const char *district_id, const char *role, const char *user) {
 
     printf("Report %d added successfully to district %s\n", report.id, district_id);
 
-    // Log the operation
-    log_operation(district_id, "add", role, user);
+    // Notify monitor_reports if available
+    int monitor_result = notify_monitor("new_report_added");
+    if (monitor_result == 0) {
+        log_operation_with_message(district_id, "add", role, user, "Monitor notified");
+    } else {
+        log_operation_with_message(district_id, "add", role, user, "Monitor notification failed");
+    }
 }
 
 /*
@@ -463,5 +469,42 @@ void cmd_filter(const char *district_id, int argc, char *argv[], const char *rol
     free(fields);
     free(ops);
     free(values);
+}
+
+/*
+ * remove_district command: Delete entire district directory (manager only)
+ * Usage: city_manager --role manager --user <user> --remove_district <district_id>
+ */
+void cmd_remove_district(const char *district_id, const char *role, const char *user) {
+    if (strcmp(role, "manager") != 0) {
+        fprintf(stderr, "Error: Only managers can remove districts.\n");
+        return;
+    }
+
+    char symlink_name[MAX_PATH_LEN];
+    snprintf(symlink_name, sizeof(symlink_name), "active_reports-%s", district_id);
+
+    pid_t pid = fork();
+    if (pid == -1) {
+        perror("fork");
+        return;
+    }
+
+    if (pid == 0) {
+        execlp("rm", "rm", "-rf", district_id, NULL);
+        perror("execlp");
+        exit(1);
+    }
+
+    int status;
+    waitpid(pid, &status, 0);
+
+    if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
+        unlink(symlink_name);
+        printf("District %s removed successfully\n", district_id);
+        log_operation(district_id, "remove_district", role, user);
+    } else {
+        fprintf(stderr, "Error: Failed to remove district %s\n", district_id);
+    }
 }
 

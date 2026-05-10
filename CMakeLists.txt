@@ -7,3 +7,6 @@ add_executable(city_manager
         main.c
         utils.c
         commands.c)
+
+ add_executable(monitor_reports
+        monitor_reports.c)       
